@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"time"
 
 	"github.com/spf13/viper"
@@ -50,6 +51,10 @@ func LoadConfig(path string) (*NotifConfig, error) {
 	var cfg NotifConfig
 
 	err = viper.Unmarshal(&cfg)
+
+	if cfg.EmailSmtpPassword == "" || cfg.EmailSmtpUserName == "" {
+		return nil, errors.New("smtp config are not setup")
+	}
 
 	return &cfg, err
 }

@@ -11,6 +11,7 @@ import (
 
 	logger "notif/pkg/log"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/matcornic/hermes/v2"
 	"github.com/nats-io/nats.go"
 )
@@ -38,6 +39,7 @@ func main() {
 		zapLogger.Fatalf("nats-js stream creation failed: %v", err.Error())
 	}
 
+	v := validator.New()
 	toList := make([]email.NameAddr, 1)
 
 	toList[0].EmailAddr = cfg.Emailtest
@@ -45,13 +47,21 @@ func main() {
 
 	for i := 0; i < 4; i++ {
 		e := email.Entity{
-			FromName: "Bhalo checle",
+			FromName: "dsddfssfsfsfs",
 			ToList:   toList,
-			Subject:  "test mail via smtp with js" + fmt.Sprintf("%d", i),
+			Subject:  "test mail via smtp with js",
 		}
 
 		e.Body = prepareEmail()
 		e.Body = BuildMessage(e, *cfg)
+
+		if err := e.ToListValidation(); err != nil {
+			zapLogger.Fatalf("invalid toList: %s", err.Error())
+		}
+
+		if err := v.Struct(e); err != nil {
+			zapLogger.Fatalf("validation failed: %s", err.Error())
+		}
 
 		emailSvc := email.NewEmailService(zapLogger, cfg)
 		svc := message.NewServer(zapLogger, js, emailSvc)
@@ -62,9 +72,8 @@ func main() {
 			break
 		}
 
-		zapLogger.Infof("published: %v", pub)
+		zapLogger.Infof("published: %+v", pub)
 	}
-
 }
 
 func BuildMessage(e email.Entity, cfg config.NotifConfig) string {
