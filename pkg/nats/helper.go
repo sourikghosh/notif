@@ -1,0 +1,52 @@
+package natshelper
+
+import (
+	"fmt"
+	"notif/pkg/config"
+	"time"
+
+	"github.com/nats-io/nats.go"
+	"go.uber.org/zap"
+)
+
+func SetupConnOptions(log *zap.SugaredLogger) []nats.Option {
+	opts := make([]nats.Option, 0)
+	opts = append(opts, nats.ReconnectWait(config.NatsReconnectDelay))
+	opts = append(opts, nats.MaxReconnects(int(config.NatsTotalWait/config.NatsReconnectDelay)))
+
+	opts = append(opts, nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
+		log.Infof("Disconnected due to: %s, will attempt reconnects for %.0fs", err, config.NatsTotalWait.Minutes())
+	}))
+
+	opts = append(opts, nats.ReconnectHandler(func(nc *nats.Conn) {
+		log.Infof("Reconnected [%s]", nc.ConnectedUrl())
+	}))
+
+	opts = append(opts, nats.ClosedHandler(func(nc *nats.Conn) {
+		log.Infof("Exiting: %v", nc.LastError())
+	}))
+
+	return opts
+}
+
+func CreateStream(js nats.JetStreamContext, log *zap.SugaredLogger) (err error) {
+	stream, _ := js.StreamInfo(config.StreamName)
+	if stream == nil {
+		subj := fmt.Sprintf("%s.*", config.StreamName)
+		log.Debugf("creating stream %q and subjects %q", config.StreamName, subj)
+
+		if _, err = js.AddStream(&nats.StreamConfig{
+			Name:        config.StreamName,
+			Description: "notification stream",
+			Subjects:    []string{subj},
+			Retention:   nats.WorkQueuePolicy,
+			Discard:     nats.DiscardOld,
+			MaxAge:      24 * time.Hour,
+			Storage:     nats.FileStorage,
+		}); err != nil {
+			return
+		}
+	}
+
+	return nil
+}
