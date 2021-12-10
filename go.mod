@@ -4,7 +4,8 @@ go 1.16
 
 require (
 	github.com/avast/retry-go v3.0.0+incompatible
-	github.com/go-playground/validator/v10 v10.9.0 // indirect
+	github.com/gin-gonic/gin v1.7.7
+	github.com/go-playground/validator/v10 v10.9.0
 	github.com/klauspost/compress v1.13.6 // indirect
 	github.com/matcornic/hermes/v2 v2.1.0
 	github.com/nats-io/nats-server/v2 v2.6.6 // indirect

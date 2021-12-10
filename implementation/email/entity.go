@@ -3,15 +3,15 @@ package email
 import "errors"
 
 type NameAddr struct {
-	EmailAddr string
-	UserName  string
+	EmailAddr string `json:"emailAddr"`
+	UserName  string `json:"userName"`
 }
 
 type Entity struct {
-	FromName string     `validate:"required,min=4,max=15"`
-	ToList   []NameAddr `validate:"required"`
-	Subject  string
-	Body     string `validate:"required"`
+	FromName string     `json:"fromName" validate:"required,min=4,max=15"`
+	ToList   []NameAddr `json:"toList" validate:"required"`
+	Subject  string     `json:"subject"`
+	Body     string     `json:"" validate:"required"`
 }
 
 func (e *Entity) ToListValidation() error {

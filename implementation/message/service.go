@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"notif/implementation/email"
+	"notif/pkg"
 	"notif/pkg/config"
 	"time"
 
@@ -36,7 +38,11 @@ func (s *srv) SendEmailRequest(e email.Entity) (*nats.PubAck, error) {
 	eBytes, err := json.Marshal(e)
 	if err != nil {
 		s.log.Errorf("marshiling failed: %v", err)
-		return nil, err
+
+		return nil, pkg.NotifErr{
+			Code: http.StatusBadRequest,
+			Err:  err,
+		}
 	}
 
 	pub, err := s.js.Publish(fmt.Sprintf("%s.send", config.StreamName), eBytes)
