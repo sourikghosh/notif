@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"notif/implementation/email"
-	"notif/implementation/message"
 	"notif/pkg/config"
 	natshelper "notif/pkg/nats"
 	"strings"
@@ -63,16 +62,18 @@ func main() {
 			zapLogger.Fatalf("validation failed: %s", err.Error())
 		}
 
-		emailSvc := email.NewEmailService(zapLogger, cfg)
-		svc := message.NewServer(zapLogger, js, emailSvc)
+		fmt.Printf("%+v\n", e)
 
-		pub, err := svc.SendEmailRequest(e)
-		if err != nil {
-			zapLogger.Errorf(err.Error())
-			break
-		}
+		// emailSvc := email.NewEmailService(zapLogger, cfg)
+		// svc := message.NewServer(zapLogger, js, emailSvc)
 
-		zapLogger.Infof("published: %+v", pub)
+		// pub, err := svc.SendEmailRequest(e)
+		// if err != nil {
+		// 	zapLogger.Errorf(err.Error())
+		// 	break
+		// }
+
+		// zapLogger.Infof("published: %+v", pub)
 	}
 }
 
