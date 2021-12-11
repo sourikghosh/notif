@@ -32,6 +32,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+
 	// fetching config
 	cfg, err := config.LoadConfig(".")
 	if err != nil {
@@ -42,13 +43,13 @@ func main() {
 	// setting up logger with the config
 	zapLogger := logger.NewLogger(cfg)
 
-	// Create the exporter
+	// Creating the exporter exporter
 	exp, err := jaeger.New(jaeger.WithAgentEndpoint())
 	if err != nil {
 		zapLogger.Fatalf("jaeger exported creation failed: %s", err.Error())
 	}
 
-	// Define resource attributes
+	// Defining resource attributes
 	resource := resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String("notif-svc"),
@@ -58,19 +59,16 @@ func main() {
 
 	// Create the trace provider with the exporter and resources
 	provider := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exp), // Always be sure to batch in production.
+		sdktrace.WithBatcher(exp),
 		sdktrace.WithResource(resource),
 	)
 
+	// b3 propagator initilizes
 	propagator := b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader))
-	// propagator.Extract()
-	// propagator.Inject(ctx,)
 	tracer := provider.Tracer("notifSvc")
 
-	// setting few basic nats opts
+	// setting few basic nats opts and connecting to nats
 	opts := natshelper.SetupConnOptions(zapLogger)
-
-	// connecting to nats with the following opts
 	natsConn, err := nats.Connect(nats.DefaultURL, opts...)
 	if err != nil {
 		zapLogger.Fatalf("nats connection failed: %v", err.Error())
@@ -127,11 +125,13 @@ func main() {
 	ctxWithTimeOut, cancel := context.WithTimeout(ctx, config.ServerShutdownTimeOut)
 	defer cleanUp(cancel, zapLogger)
 
+	// gracefully shutdown http server
 	if err := server.Shutdown(ctxWithTimeOut); err != nil {
 		cleanUp(cancel, zapLogger)
 		zapLogger.Warnf("Server forced to shutdown: %s", err.Error())
 	}
 
+	// gracefully shutdown provider
 	if err := provider.Shutdown(ctxWithTimeOut); err != nil {
 		zapLogger.Warn(err)
 	}
