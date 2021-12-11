@@ -11,7 +11,7 @@ const (
 var (
 	NatsTotalWait              = 10 * time.Second
 	NatsReconnectDelay         = time.Second
-	NatsBatchSize              = 2
+	NatsBatchSize              = 5
 	SmtpRetryAttempts     uint = 3
 	SmtpRetryDelay             = 2 * time.Second
 	HttpTimeOut                = 5 * time.Second

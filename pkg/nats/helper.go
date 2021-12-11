@@ -11,7 +11,11 @@ import (
 
 func SetupConnOptions(log *zap.SugaredLogger) []nats.Option {
 	opts := make([]nats.Option, 0)
+	// Buffering Messages During Reconnect Attempts
+	opts = append(opts, nats.ReconnectBufSize(5*1024*1024))
+	// Set reconnect interval
 	opts = append(opts, nats.ReconnectWait(config.NatsReconnectDelay))
+	// Set max reconnects attempts
 	opts = append(opts, nats.MaxReconnects(int(config.NatsTotalWait/config.NatsReconnectDelay)))
 
 	opts = append(opts, nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {

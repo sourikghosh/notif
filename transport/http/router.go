@@ -7,10 +7,12 @@ import (
 	"notif/transport/endpoints"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NewHTTPService takes all the endpoints and returns handler.
-func NewHTTPService(endpoints endpoints.Endpoints) http.Handler {
+func NewHTTPService(endpoints endpoints.Endpoints, t trace.Tracer) http.Handler {
 
 	r := gin.New()
 
@@ -20,7 +22,7 @@ func NewHTTPService(endpoints endpoints.Endpoints) http.Handler {
 
 	notif := r.Group("/notif-svc/v1")
 	{
-		notif.POST("/create", endpointRequestEncoder(endpoints.CreateNotif))
+		notif.POST("/create", endpointRequestEncoder(endpoints.CreateNotif, t))
 	}
 
 	return r
@@ -28,12 +30,14 @@ func NewHTTPService(endpoints endpoints.Endpoints) http.Handler {
 
 // endpointRequestEncoder encodes request and does error handling
 // and send response.
-func endpointRequestEncoder(endpoint pkg.Endpoint) gin.HandlerFunc {
+func endpointRequestEncoder(endpoint pkg.Endpoint, t trace.Tracer) gin.HandlerFunc {
 	fn := func(c *gin.Context) {
 		var statusCode int
+		ctx, span := t.Start(c, "endpoint-Req-Encoder")
+		defer span.End()
 
 		// process the request with its handler
-		response, err := endpoint(c, c.Request.Body)
+		response, err := endpoint(ctx, c.Request.Body)
 		if err != nil {
 			// if statusCode is not send then return InternalServerErr
 			switch e := err.(type) {
@@ -53,6 +57,7 @@ func endpointRequestEncoder(endpoint pkg.Endpoint) gin.HandlerFunc {
 		}
 
 		// if err did not occur then return Ok status
+		span.SetStatus(codes.Ok, "request proccessed suceessfully")
 		c.JSON(http.StatusOK, response)
 	}
 

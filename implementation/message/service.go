@@ -12,32 +12,45 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
 type Service interface {
-	SendEmailRequest(e email.Entity) (*nats.PubAck, error)
+	SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAck, error)
 	RecvEmailRequest(ctx context.Context)
 }
 
 type srv struct {
-	js       nats.JetStreamContext
-	emailSvc email.Service
-	log      *zap.SugaredLogger
+	js          nats.JetStreamContext
+	emailSvc    email.Service
+	log         *zap.SugaredLogger
+	tracer      trace.Tracer
+	propagators propagation.TextMapPropagator
 }
 
-func NewServer(logger *zap.SugaredLogger, jetStream nats.JetStreamContext, emailSvc email.Service) Service {
+func NewServer(l *zap.SugaredLogger, jetStream nats.JetStreamContext, e email.Service, t trace.Tracer, p propagation.TextMapPropagator) Service {
 	return &srv{
-		log:      logger,
-		js:       jetStream,
-		emailSvc: emailSvc,
+		log:         l,
+		js:          jetStream,
+		emailSvc:    e,
+		tracer:      t,
+		propagators: p,
 	}
 }
 
-func (s *srv) SendEmailRequest(e email.Entity) (*nats.PubAck, error) {
+func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAck, error) {
+	spanCtx, span := s.tracer.Start(ctx, "message.svc-sendEmailReq")
+	defer span.End()
+
+	span.AddEvent("marshalling notif-event")
 	eBytes, err := json.Marshal(e)
 	if err != nil {
 		s.log.Errorf("marshiling failed: %v", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 
 		return nil, pkg.NotifErr{
 			Code: http.StatusBadRequest,
@@ -45,9 +58,22 @@ func (s *srv) SendEmailRequest(e email.Entity) (*nats.PubAck, error) {
 		}
 	}
 
-	pub, err := s.js.Publish(fmt.Sprintf("%s.send", config.StreamName), eBytes)
+	// prepare nats msg with data and headers
+	header := make(nats.Header)
+	s.propagators.Inject(spanCtx, propagation.HeaderCarrier(header))
+	m := &nats.Msg{
+		Subject: fmt.Sprintf("%s.send", config.StreamName),
+		Header:  header,
+		Data:    eBytes,
+	}
+
+	span.AddEvent("msg published into stream")
+	pub, err := s.js.PublishMsg(m)
 	if err != nil {
 		s.log.Errorf("publishing failed: %v", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		return nil, err
 	}
 
@@ -79,8 +105,15 @@ func (s *srv) RecvEmailRequest(ctx context.Context) {
 
 func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 	for i := range msgs {
+		var span trace.Span
+		spanCtx := s.propagators.Extract(ctx, propagation.HeaderCarrier(msgs[i].Header))
+		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-RecvEmailRequest.processMsg")
+
 		if err := msgs[i].Ack(); err != nil {
 			s.log.Errorf("ack failed with err: %v", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return err
 		}
 
@@ -88,21 +121,28 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 		err := json.Unmarshal(msgs[i].Data, &e)
 		if err != nil {
 			s.log.Errorf("unmarshalling msgData failed err: %v", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return err
 		}
 
 		if err := retry.Do(func() error {
-			return s.emailSvc.SendEmail(ctx, e)
+			return s.emailSvc.SendEmail(spanCtx, e)
 		},
 			retry.Attempts(config.SmtpRetryAttempts),
 			retry.Delay(config.SmtpRetryDelay),
-			retry.Context(ctx),
+			retry.Context(spanCtx),
 		); err != nil {
 			s.log.Errorf("sending email failed err: %v", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return err
 		}
 
 		fmt.Println("successfully send email")
+		span.End()
 	}
 
 	return nil
