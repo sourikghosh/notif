@@ -11,6 +11,8 @@ import (
 	"notif/pkg"
 
 	"github.com/go-playground/validator/v10"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Endpoints exposes all endpoints.
@@ -19,23 +21,32 @@ type Endpoints struct {
 }
 
 // MakeEndpoints takes service and returns Endpoints
-func MakeEndpoints(svc message.Service) Endpoints {
+func MakeEndpoints(svc message.Service, tracer trace.Tracer) Endpoints {
 	return Endpoints{
-		CreateNotif: createNotifHandler(svc),
+		CreateNotif: createNotifHandler(svc, tracer),
 	}
 }
 
 // createNotifHandler to recv email from http as json send the pubAck
-func createNotifHandler(svc message.Service) pkg.Endpoint {
+func createNotifHandler(svc message.Service, tracer trace.Tracer) pkg.Endpoint {
 	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		ctx, span := tracer.Start(ctx, "create-notif-handler")
+		defer span.End()
+
 		var body email.Entity
 
 		data, err := ioutil.ReadAll(request.(io.Reader))
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return nil, err
 		}
 
 		if err = json.Unmarshal(data, &body); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return nil, pkg.NotifErr{
 				Code: http.StatusBadRequest,
 				Err:  err,
@@ -45,6 +56,9 @@ func createNotifHandler(svc message.Service) pkg.Endpoint {
 		// validation of resquest body
 		v := validator.New()
 		if err := v.Struct(body); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return nil, pkg.NotifErr{
 				Code: http.StatusBadRequest,
 				Err:  err,
@@ -52,6 +66,9 @@ func createNotifHandler(svc message.Service) pkg.Endpoint {
 		}
 
 		if err := body.ToListValidation(); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return nil, pkg.NotifErr{
 				Code: http.StatusBadRequest,
 				Err:  err,
@@ -59,8 +76,11 @@ func createNotifHandler(svc message.Service) pkg.Endpoint {
 		}
 
 		// publish notif event
-		pubAck, err := svc.SendEmailRequest(body)
+		pubAck, err := svc.SendEmailRequest(ctx, body)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return nil, err
 		}
 
