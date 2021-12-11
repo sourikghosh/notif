@@ -1,16 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"notif/implementation/email"
+	"notif/implementation/message"
 	"notif/pkg/config"
 	natshelper "notif/pkg/nats"
 	"strings"
 
 	logger "notif/pkg/log"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/matcornic/hermes/v2"
 	"github.com/nats-io/nats.go"
 )
@@ -38,43 +39,45 @@ func main() {
 		zapLogger.Fatalf("nats-js stream creation failed: %v", err.Error())
 	}
 
-	v := validator.New()
-	toList := make([]email.NameAddr, 1)
+	emailSvc := email.NewEmailService(zapLogger, cfg)
+	svc := message.NewServer(zapLogger, js, emailSvc)
 
-	toList[0].EmailAddr = cfg.Emailtest
-	toList[0].UserName = "Official Sourik"
+	// pub, err := svc.SendEmailRequest(e)
+	// if err != nil {
+	// 	zapLogger.Errorf(err.Error())
+	// 	break
+	// }
+	svc.RecvEmailRequest(context.Background())
 
-	for i := 0; i < 4; i++ {
-		e := email.Entity{
-			FromName: "dsddfssfsfsfs",
-			ToList:   toList,
-			Subject:  "test mail via smtp with js",
-		}
+	// zapLogger.Infof("published: %+v", pub)
 
-		e.Body = prepareEmail()
-		e.Body = BuildMessage(e, *cfg)
+	// v := validator.New()
+	// toList := make([]email.NameAddr, 1)
 
-		if err := e.ToListValidation(); err != nil {
-			zapLogger.Fatalf("invalid toList: %s", err.Error())
-		}
+	// toList[0].EmailAddr = cfg.Emailtest
+	// toList[0].UserName = "Official Sourik"
 
-		if err := v.Struct(e); err != nil {
-			zapLogger.Fatalf("validation failed: %s", err.Error())
-		}
+	// for i := 0; i < 4; i++ {
+	// 	e := email.Entity{
+	// 		FromName: "dsddfssfsfsfs",
+	// 		ToList:   toList,
+	// 		Subject:  "test mail via smtp with js",
+	// 	}
 
-		fmt.Printf("%+v\n", e)
+	// 	e.Body = prepareEmail()
+	// 	e.Body = BuildMessage(e, *cfg)
 
-		// emailSvc := email.NewEmailService(zapLogger, cfg)
-		// svc := message.NewServer(zapLogger, js, emailSvc)
+	// 	if err := e.ToListValidation(); err != nil {
+	// 		zapLogger.Fatalf("invalid toList: %s", err.Error())
+	// 	}
 
-		// pub, err := svc.SendEmailRequest(e)
-		// if err != nil {
-		// 	zapLogger.Errorf(err.Error())
-		// 	break
-		// }
+	// 	if err := v.Struct(e); err != nil {
+	// 		zapLogger.Fatalf("validation failed: %s", err.Error())
+	// 	}
 
-		// zapLogger.Infof("published: %+v", pub)
-	}
+	// 	fmt.Printf("%+v\n", e)
+
+	// }
 }
 
 func BuildMessage(e email.Entity, cfg config.NotifConfig) string {

@@ -61,12 +61,11 @@ func main() {
 
 	// creating server with timeout and assigning the routes
 	server := &http.Server{
-		Addr:              ":" + cfg.PORT,
-		ReadHeaderTimeout: config.HttpTimeOut,
-		ReadTimeout:       config.HttpTimeOut,
-		WriteTimeout:      config.HttpTimeOut,
-		IdleTimeout:       config.HttpTimeOut,
-		Handler:           h,
+		Addr:         ":" + cfg.PORT,
+		ReadTimeout:  config.HttpTimeOut,
+		WriteTimeout: config.HttpTimeOut,
+		IdleTimeout:  config.HttpTimeOut,
+		Handler:      h,
 	}
 
 	// start subscribing for notif events
