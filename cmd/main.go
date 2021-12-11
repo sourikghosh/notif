@@ -132,7 +132,7 @@ func main() {
 		zapLogger.Warnf("Server forced to shutdown: %s", err.Error())
 	}
 
-	if err := provider.Shutdown(ctx); err != nil {
+	if err := provider.Shutdown(ctxWithTimeOut); err != nil {
 		zapLogger.Warn(err)
 	}
 }
