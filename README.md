@@ -17,10 +17,26 @@
 - `make server`
 
 ## Notification
-Notif currently only supports email as notification. Email is sent using go standard lib smtp package.<br>Notif does not provide a SMTP server it takes few required credentials to create a secured TLS smtp client connection if possible to send emails.
+Notif currently only supports <b>email</b> as notification. Email is sent using go standard lib <em>smtp package</em>.<br>Notif does not provide a <b>SMTP server</b> it takes few required credentials to create a <em>secured TLS</em> smtp client connection if possible to send emails.<br>Email accept all possible content-type so you can send from beautiful htmls to basic plain/text. For examples refer to [example](https://github.com/sourikghosh/notif/blob/main/examples/main.go)  
 
 ## Enpoints
 Notif currently only support rest endpoint to create notification events.<br>gRPC enpoints are coming soon.
+```bash
+curl --request POST \
+  --url http://localhost:6969/notif-svc/v1/create \
+  --header 'Content-Type: application/json' \
+  --data '{
+	"fromName":"Sourik Ghosh",
+	"toList":[
+		{
+			"emailAddr":"someemail@example.com",
+			"userName":"some one"
+		}
+	],
+	"subject":"This is the subject",
+	"body":"Hi someone, Have a great day !!!"
+}'
+```
 
 ## Jaeger-UI
 Then navigate to [Jaeger-UI](http://localhost:16686)
