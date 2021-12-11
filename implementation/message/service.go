@@ -108,7 +108,6 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 		var span trace.Span
 		spanCtx := s.propagators.Extract(ctx, propagation.HeaderCarrier(msgs[i].Header))
 		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-RecvEmailRequest.processMsg")
-		defer span.End()
 
 		if err := msgs[i].Ack(); err != nil {
 			s.log.Errorf("ack failed with err: %v", err)
@@ -143,6 +142,7 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 		}
 
 		fmt.Println("successfully send email")
+		span.End()
 	}
 
 	return nil

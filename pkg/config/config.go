@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
 
@@ -54,6 +55,10 @@ func LoadConfig(path string) (*NotifConfig, error) {
 
 	if cfg.EmailSmtpPassword == "" || cfg.EmailSmtpUserName == "" {
 		return nil, errors.New("smtp config are not setup")
+	}
+
+	if cfg.Mode == gin.ReleaseMode {
+		gin.SetMode(gin.ReleaseMode)
 	}
 
 	return &cfg, err
