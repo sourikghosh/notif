@@ -1,4 +1,4 @@
-<img align="right" width="200px" src="https://raw.githubusercontent.com/sourikghosh/notif/main/notif.png">
+<img align="right" width="200px" src="https://github.com/sourikghosh/notif/blob/main/notif.png">
 
 # NOTIF
 
