@@ -88,7 +88,7 @@ func main() {
 	}
 
 	emailSvc := email.NewEmailService(zapLogger, cfg, tracer)
-	svc := message.NewServer(zapLogger, js, emailSvc, tracer)
+	svc := message.NewServer(zapLogger, js, emailSvc, tracer, propagator)
 	end := endpoints.MakeEndpoints(svc, tracer)
 	h := httpTransport.NewHTTPService(end, tracer)
 

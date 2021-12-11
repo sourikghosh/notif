@@ -12,10 +12,8 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/nats-io/nats.go"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	jaegerConfig "github.com/uber/jaeger-client-go/config"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -26,18 +24,20 @@ type Service interface {
 }
 
 type srv struct {
-	js       nats.JetStreamContext
-	emailSvc email.Service
-	log      *zap.SugaredLogger
-	tracer   trace.Tracer
+	js          nats.JetStreamContext
+	emailSvc    email.Service
+	log         *zap.SugaredLogger
+	tracer      trace.Tracer
+	propagators propagation.TextMapPropagator
 }
 
-func NewServer(l *zap.SugaredLogger, jetStream nats.JetStreamContext, e email.Service, t trace.Tracer) Service {
+func NewServer(l *zap.SugaredLogger, jetStream nats.JetStreamContext, e email.Service, t trace.Tracer, p propagation.TextMapPropagator) Service {
 	return &srv{
-		log:      l,
-		js:       jetStream,
-		emailSvc: e,
-		tracer:   t,
+		log:         l,
+		js:          jetStream,
+		emailSvc:    e,
+		tracer:      t,
+		propagators: p,
 	}
 }
 
@@ -45,6 +45,7 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 	spanCtx, span := s.tracer.Start(ctx, "message.svc-sendEmailReq")
 	defer span.End()
 
+	span.AddEvent("marshalling notif-event")
 	eBytes, err := json.Marshal(e)
 	if err != nil {
 		s.log.Errorf("marshiling failed: %v", err)
@@ -57,20 +58,16 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 		}
 	}
 
+	// prepare nats msg with data and headers
 	header := make(nats.Header)
-	childSpan, _ := opentracing.StartSpanFromContext(spanCtx, "publish-msg")
-	childSpan.Tracer().Inject(
-		childSpan.Context(),
-		opentracing.HTTPHeaders,
-		opentracing.HTTPHeadersCarrier(header),
-	)
-
+	s.propagators.Inject(spanCtx, propagation.HeaderCarrier(header))
 	m := &nats.Msg{
 		Subject: fmt.Sprintf("%s.send", config.StreamName),
 		Header:  header,
 		Data:    eBytes,
 	}
 
+	span.AddEvent("msg published into stream")
 	pub, err := s.js.PublishMsg(m)
 	if err != nil {
 		s.log.Errorf("publishing failed: %v", err)
@@ -108,60 +105,44 @@ func (s *srv) RecvEmailRequest(ctx context.Context) {
 
 func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 	for i := range msgs {
-		cfg := &jaegerConfig.Configuration{
-			ServiceName: "notif-svc",
-
-			// "const" sampler is a binary sampling strategy: 0=never sample, 1=always sample.
-			Sampler: &jaegerConfig.SamplerConfig{
-				Type:  "const",
-				Param: 1,
-			},
-
-			// Log the emitted spans to stdout.
-			Reporter: &jaegerConfig.ReporterConfig{
-				LogSpans:           true,
-				LocalAgentHostPort: "localhost:6831",
-			},
-		}
-
-		tracer, closer, err := cfg.NewTracer()
-		if err != nil {
-			panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
-		}
-		defer closer.Close()
+		var span trace.Span
+		spanCtx := s.propagators.Extract(ctx, propagation.HeaderCarrier(msgs[i].Header))
+		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-RecvEmailRequest.processMsg")
+		defer span.End()
 
 		if err := msgs[i].Ack(); err != nil {
 			s.log.Errorf("ack failed with err: %v", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return err
 		}
 
-		spanCtx, _ := tracer.Extract(
-			opentracing.HTTPHeaders,
-			opentracing.HTTPHeadersCarrier(msgs[i].Header),
-		)
-
-		span := tracer.StartSpan("message.svc-RecvEmailSend", ext.RPCServerOption(spanCtx))
-		sCtx := opentracing.ContextWithSpan(context.Background(), span)
 		var e email.Entity
-		err = json.Unmarshal(msgs[i].Data, &e)
+		err := json.Unmarshal(msgs[i].Data, &e)
 		if err != nil {
 			s.log.Errorf("unmarshalling msgData failed err: %v", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return err
 		}
 
 		if err := retry.Do(func() error {
-			return s.emailSvc.SendEmail(sCtx, e)
+			return s.emailSvc.SendEmail(spanCtx, e)
 		},
 			retry.Attempts(config.SmtpRetryAttempts),
 			retry.Delay(config.SmtpRetryDelay),
-			retry.Context(sCtx),
+			retry.Context(spanCtx),
 		); err != nil {
 			s.log.Errorf("sending email failed err: %v", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+
 			return err
 		}
 
 		fmt.Println("successfully send email")
-		span.Finish()
 	}
 
 	return nil
