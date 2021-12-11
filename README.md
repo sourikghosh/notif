@@ -17,7 +17,7 @@
 - `make server`
 
 ## Notification
-Notif currently only supports <b>email</b> as notification. Email is sent using go standard lib <em>smtp package</em>.<br>Notif does not provide a <b>SMTP server</b> it takes few required credentials to create a <em>secured TLS</em> smtp client connection if possible to send emails.<br>Email accept all possible content-type so you can send from beautiful htmls to basic plain/text. For examples refer to [example](https://github.com/sourikghosh/notif/blob/main/examples/main.go)  
+Notif currently only supports <b>email</b> as notification. Email is sent using go standard lib <em>smtp package</em>.<br>Notif does not provide a <b>SMTP server</b> it takes few required credentials to create a <em>secured TLS</em> smtp client connection if possible to send emails.<br>Email accept all possible content-type so you can send from beautiful htmls to basic plain/text. For examples refer to [example](https://github.com/sourikghosh/notif/blob/main/examples/customHtmlBody.png)  
 
 ## Enpoints
 Notif currently only support rest endpoint to create notification events.<br>gRPC enpoints are coming soon.
