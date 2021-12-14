@@ -21,8 +21,9 @@
 <img src="https://github.com/sourikghosh/notif/blob/main/notif-diagram.png">
 </p>
 
-## Notification
-Notif currently only supports <b>email</b> as notification. Email is sent using go standard lib <em>smtp package</em>.<br>Notif does not provide a <b>SMTP server</b> it takes few required credentials to create a <em>secured TLS</em> smtp client connection if possible to send emails.<br>Email accept all possible content-type so you can send from beautiful htmls to basic plain/text. For examples refer to [example](https://github.com/sourikghosh/notif/blob/main/examples/sendCustomHtml.go)  
+## Mode
+### Email
+Currently the Mode of Notification is only <b>email</b>. Email is sent using go standard lib <em>smtp package</em>.<br>Notif does not provide a <b>SMTP server</b> it takes few required credentials to create a <em>secured TLS</em> smtp client connection if possible to send emails.<br>Email accept all possible content-type so you can send from beautiful htmls to basic plain/text. For examples refer to [example](https://github.com/sourikghosh/notif/blob/main/examples/sendCustomHtml.go)
 <p align="center">
 <img width="760px" src="https://github.com/sourikghosh/notif/blob/main/examples/customHtmlBody.png">
 </p>
