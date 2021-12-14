@@ -2,7 +2,7 @@
 
 # NOTIF
 
-<b>Notif</b> is a distributed notification service. Its build using <em><b>Nats JetStream</b></em> which serves as a distributed <em>workQueue</em> and consumes the event with a <em>pull</em> based consumer.The pull subscriber actually pulls event from stream which means its can be scaled horizontally very easily. The pull-subscriber fetch events in batchs which can be configured.<br>Notif also has instrumentation support for <em>distributed tracing</em> for observability which is key for async transactions using <em><b>Open Telemetry</b></em> and <em><b>Jaeger</b></em> as exporter.
+<b>Notif</b> is a distributed notification micro-service. Its build using <em><b>Nats JetStream</b></em> which serves as a distributed <em>workQueue</em> and consumes the event with a <em>pull</em> based consumer.The pull subscriber actually pulls event from stream which means its can be scaled horizontally very easily. The pull-subscriber fetch events in batchs which can be configured.<br>Notif also has instrumentation support for <em>distributed tracing</em> for observability which is key for async transactions using <em><b>Open Telemetry</b></em>, <b><em>B3</em></b> as propagator, and <em><b>Jaeger</b></em> as exporter.
 
 ## Prerequisite
 - a smtp server / enable smtp service on your email
