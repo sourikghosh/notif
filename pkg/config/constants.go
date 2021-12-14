@@ -9,11 +9,12 @@ const (
 )
 
 var (
-	NatsTotalWait              = 10 * time.Second
-	NatsReconnectDelay         = time.Second
-	NatsBatchSize              = 5
-	SmtpRetryAttempts     uint = 3
-	SmtpRetryDelay             = 2 * time.Second
-	HttpTimeOut                = 5 * time.Second
-	ServerShutdownTimeOut      = 10 * time.Second
+	NatsReconnectTotalWait      = 10 * time.Second
+	NatsReconnectDelay          = time.Second
+	NatsBatchSize               = 5
+	NatsSubMaxWait              = 15 * time.Second
+	SmtpRetryAttempts      uint = 3
+	SmtpRetryDelay              = 2 * time.Second
+	HttpTimeOut                 = 5 * time.Second
+	ServerShutdownTimeOut       = 10 * time.Second
 )

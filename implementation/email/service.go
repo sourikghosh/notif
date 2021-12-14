@@ -34,12 +34,15 @@ func (s *service) SendEmail(ctx context.Context, e Entity) error {
 	_, span := s.tracer.Start(ctx, "sendEmail-func")
 	defer span.End()
 
+	traceID := span.SpanContext().TraceID().String()
+
 	auth := smtp.PlainAuth("", s.cfg.EmailSmtpUserName, s.cfg.EmailSmtpPassword, s.cfg.EmailSmtpHost)
 	smtpAddr := s.cfg.EmailSmtpHost + ":" + s.cfg.EmailSmtpPORT
 
 	body := []byte(e.Body)
 	err := smtp.SendMail(smtpAddr, auth, s.cfg.EmailSmtpUserName, []string{e.ToList[0].EmailAddr}, body)
 	if err != nil {
+		s.log.Errorf(err.Error(), zap.String("traceID", traceID))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 

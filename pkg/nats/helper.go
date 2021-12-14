@@ -16,10 +16,10 @@ func SetupConnOptions(log *zap.SugaredLogger) []nats.Option {
 	// Set reconnect interval
 	opts = append(opts, nats.ReconnectWait(config.NatsReconnectDelay))
 	// Set max reconnects attempts
-	opts = append(opts, nats.MaxReconnects(int(config.NatsTotalWait/config.NatsReconnectDelay)))
+	opts = append(opts, nats.MaxReconnects(int(config.NatsReconnectTotalWait/config.NatsReconnectDelay)))
 
 	opts = append(opts, nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
-		log.Infof("Disconnected due to: %s, will attempt reconnects for %.0fs", err, config.NatsTotalWait.Minutes())
+		log.Infof("Disconnected due to: %s, will attempt reconnects for %.0fs", err, config.NatsReconnectTotalWait.Minutes())
 	}))
 
 	opts = append(opts, nats.ReconnectHandler(func(nc *nats.Conn) {

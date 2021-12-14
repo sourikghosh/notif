@@ -8,7 +8,6 @@ import (
 	"notif/implementation/email"
 	"notif/pkg"
 	"notif/pkg/config"
-	"time"
 
 	"github.com/avast/retry-go"
 	"github.com/nats-io/nats.go"
@@ -45,10 +44,11 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 	spanCtx, span := s.tracer.Start(ctx, "message.svc-sendEmailReq")
 	defer span.End()
 
-	span.AddEvent("marshalling notif-event")
+	traceID := span.SpanContext().TraceID().String()
+
 	eBytes, err := json.Marshal(e)
 	if err != nil {
-		s.log.Errorf("marshiling failed: %v", err)
+		s.log.Errorf("marshiling failed: %v", err, zap.String("traceID", traceID))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
@@ -67,10 +67,9 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 		Data:    eBytes,
 	}
 
-	span.AddEvent("msg published into stream")
 	pub, err := s.js.PublishMsg(m)
 	if err != nil {
-		s.log.Errorf("publishing failed: %v", err)
+		s.log.Errorf("publishing failed: %v", err, zap.String("traceID", traceID))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
@@ -81,6 +80,7 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 }
 
 func (s *srv) RecvEmailRequest(ctx context.Context) {
+	// creating a new pull based consumer
 	sub, err := s.js.PullSubscribe(fmt.Sprintf("%s.send", config.StreamName), fmt.Sprintf("%s_pullSub", config.StreamName), nats.PullMaxWaiting(128))
 	if err != nil {
 		s.log.Errorf("subcribing to stream: %s failed with err: %v", config.StreamName, err)
@@ -93,7 +93,8 @@ func (s *srv) RecvEmailRequest(ctx context.Context) {
 		default:
 		}
 
-		msgs, err := sub.Fetch(config.NatsBatchSize, nats.MaxWait(30*time.Second))
+		// fecthing msgs in batch till context deadline or timeout
+		msgs, err := sub.Fetch(config.NatsBatchSize, nats.MaxWait(config.NatsSubMaxWait))
 		if err != nil && err != nats.ErrTimeout {
 			s.log.Errorf("failed to fetch msg in batch:%v", err)
 		}
@@ -109,8 +110,11 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 		spanCtx := s.propagators.Extract(ctx, propagation.HeaderCarrier(msgs[i].Header))
 		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-RecvEmailRequest.processMsg")
 
+		// fetching traceID for logging
+		traceID := span.SpanContext().TraceID().String()
+
 		if err := msgs[i].Ack(); err != nil {
-			s.log.Errorf("ack failed with err: %v", err)
+			s.log.Errorf("ack failed with err: %v", err, zap.String("traceID", traceID))
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 
@@ -120,7 +124,7 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 		var e email.Entity
 		err := json.Unmarshal(msgs[i].Data, &e)
 		if err != nil {
-			s.log.Errorf("unmarshalling msgData failed err: %v", err)
+			s.log.Errorf("unmarshalling msgData failed err: %v", err, zap.String("traceID", traceID))
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 
@@ -134,14 +138,14 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 			retry.Delay(config.SmtpRetryDelay),
 			retry.Context(spanCtx),
 		); err != nil {
-			s.log.Errorf("sending email failed err: %v", err)
+			s.log.Errorf("sending email failed err: %v", err, zap.String("traceID", traceID))
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 
 			return err
 		}
 
-		fmt.Println("successfully send email")
+		s.log.Info("successfully send email", zap.String("traceID", traceID))
 		span.End()
 	}
 
