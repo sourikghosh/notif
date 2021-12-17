@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"net/http"
 	"notif/implementation/email"
 	"notif/pkg"
 	"notif/pkg/config"
+	"sync"
 
 	"github.com/avast/retry-go"
 	"github.com/nats-io/nats.go"
@@ -19,10 +21,10 @@ import (
 
 type Service interface {
 	SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAck, error)
-	RecvEmailRequest(ctx context.Context)
+	RecvEmailRequest(ctx context.Context, wg *sync.WaitGroup)
 }
 
-type srv struct {
+type messageSvc struct {
 	js          nats.JetStreamContext
 	emailSvc    email.Service
 	log         *zap.SugaredLogger
@@ -30,8 +32,10 @@ type srv struct {
 	propagators propagation.TextMapPropagator
 }
 
-func NewServer(l *zap.SugaredLogger, jetStream nats.JetStreamContext, e email.Service, t trace.Tracer, p propagation.TextMapPropagator) Service {
-	return &srv{
+func NewMessageService(
+	l *zap.SugaredLogger, jetStream nats.JetStreamContext,
+	e email.Service, t trace.Tracer, p propagation.TextMapPropagator) Service {
+	return &messageSvc{
 		log:         l,
 		js:          jetStream,
 		emailSvc:    e,
@@ -40,17 +44,18 @@ func NewServer(l *zap.SugaredLogger, jetStream nats.JetStreamContext, e email.Se
 	}
 }
 
-func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAck, error) {
-	spanCtx, span := s.tracer.Start(ctx, "message.svc-sendEmailReq")
+func (s *messageSvc) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAck, error) {
+	// starting span for publishing the msg
+	spanCtx, span := s.tracer.Start(ctx, "message.svc-publish")
 	defer span.End()
 
+	// extracting traceID for logging purpose
 	traceID := span.SpanContext().TraceID().String()
 
+	// marshalling email struct to send as msg data
 	eBytes, err := json.Marshal(e)
 	if err != nil {
-		s.log.Errorf("marshiling failed: %v", err, zap.String("traceID", traceID))
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		s.errLogWithSpanAttributes("marshiling failed", traceID, err, span)
 
 		return nil, pkg.NotifErr{
 			Code: http.StatusBadRequest,
@@ -58,7 +63,8 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 		}
 	}
 
-	// prepare nats msg with data and headers
+	// prepare nats msg with data and headers and
+	// injecting the current traceID into the msg headers
 	header := make(nats.Header)
 	s.propagators.Inject(spanCtx, propagation.HeaderCarrier(header))
 	m := &nats.Msg{
@@ -67,29 +73,39 @@ func (s *srv) SendEmailRequest(ctx context.Context, e email.Entity) (*nats.PubAc
 		Data:    eBytes,
 	}
 
+	// publishing the msg
 	pub, err := s.js.PublishMsg(m)
 	if err != nil {
-		s.log.Errorf("publishing failed: %v", err, zap.String("traceID", traceID))
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-
+		s.errLogWithSpanAttributes("publishing failed", traceID, err, span)
 		return nil, err
 	}
 
 	return pub, nil
 }
 
-func (s *srv) RecvEmailRequest(ctx context.Context) {
+func (s *messageSvc) RecvEmailRequest(ctx context.Context, wg *sync.WaitGroup) {
+	// preparing args for new consumer
+	subj := fmt.Sprintf("%s.send", config.StreamName)
+	durableName := fmt.Sprintf("%s_pullSub", config.StreamName)
+
 	// creating a new pull based consumer
-	sub, err := s.js.PullSubscribe(fmt.Sprintf("%s.send", config.StreamName), fmt.Sprintf("%s_pullSub", config.StreamName), nats.PullMaxWaiting(128))
+	sub, err := s.js.PullSubscribe(subj, durableName, nats.PullMaxWaiting(128))
 	if err != nil {
 		s.log.Errorf("subcribing to stream: %s failed with err: %v", config.StreamName, err)
+		wg.Done()
+
 		return
 	}
 
+	s.log.Infof("subscriber added to stream : %s of name: %s", config.StreamName, durableName)
+
+	// iterate over till ctx is not done
 	for {
 		select {
 		case <-ctx.Done():
+			wg.Done()
+			return
+
 		default:
 		}
 
@@ -104,44 +120,38 @@ func (s *srv) RecvEmailRequest(ctx context.Context) {
 	}
 }
 
-func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
+func (s *messageSvc) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 	for i := range msgs {
+		// Extracts the trace from msg header and creates a span for processing.
 		var span trace.Span
 		spanCtx := s.propagators.Extract(ctx, propagation.HeaderCarrier(msgs[i].Header))
-		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-RecvEmailRequest.processMsg")
+		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-subscribe.processMsg")
 
-		// fetching traceID for logging
+		// extracting traceID for logging purpose
 		traceID := span.SpanContext().TraceID().String()
 
 		if err := msgs[i].Ack(); err != nil {
-			s.log.Errorf("ack failed with err: %v", err, zap.String("traceID", traceID))
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-
+			s.errLogWithSpanAttributes("ack failed", traceID, err, span)
 			return err
 		}
 
 		var e email.Entity
 		err := json.Unmarshal(msgs[i].Data, &e)
 		if err != nil {
-			s.log.Errorf("unmarshalling msgData failed err: %v", err, zap.String("traceID", traceID))
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-
+			s.errLogWithSpanAttributes("unmarshalling msgData failed", traceID, err, span)
 			return err
 		}
 
-		if err := retry.Do(func() error {
+		// Send email service retry logic with maxAttempt and delay between each attempt
+		err = retry.Do(func() error {
 			return s.emailSvc.SendEmail(spanCtx, e)
-		},
-			retry.Attempts(config.SmtpRetryAttempts),
+		}, retry.Attempts(config.SmtpRetryAttempts),
 			retry.Delay(config.SmtpRetryDelay),
 			retry.Context(spanCtx),
-		); err != nil {
-			s.log.Errorf("sending email failed err: %v", err, zap.String("traceID", traceID))
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
+		)
 
+		if err != nil {
+			s.errLogWithSpanAttributes("sending email failed", traceID, err, span)
 			return err
 		}
 
@@ -150,4 +160,10 @@ func (s *srv) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 	}
 
 	return nil
+}
+
+func (s *messageSvc) errLogWithSpanAttributes(msg, traceID string, err error, span trace.Span) {
+	s.log.Errorf(msg+"err: %v", err, zap.String("traceID", traceID))
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }

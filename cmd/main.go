@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"notif/implementation/email"
@@ -27,13 +28,15 @@ import (
 	natshelper "notif/pkg/nats"
 
 	"github.com/nats-io/nats.go"
-	"go.uber.org/zap"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	// added 1 for nats connection exiting
+	wg.Add(1)
 
-	// fetching config
+	// fetchs configuration
 	cfg, err := config.LoadConfig(".")
 	if err != nil {
 		fmt.Printf("failed to load config: %s", err.Error())
@@ -68,7 +71,7 @@ func main() {
 	tracer := provider.Tracer("notifSvc")
 
 	// setting few basic nats opts and connecting to nats
-	opts := natshelper.SetupConnOptions(zapLogger)
+	opts := natshelper.SetupConnOptions(zapLogger, &wg)
 	natsConn, err := nats.Connect(nats.DefaultURL, opts...)
 	if err != nil {
 		zapLogger.Fatalf("nats connection failed: %v", err.Error())
@@ -86,7 +89,7 @@ func main() {
 	}
 
 	emailSvc := email.NewEmailService(zapLogger, cfg, tracer)
-	svc := message.NewServer(zapLogger, js, emailSvc, tracer, propagator)
+	svc := message.NewMessageService(zapLogger, js, emailSvc, tracer, propagator)
 	end := endpoints.MakeEndpoints(svc, tracer)
 	h := httpTransport.NewHTTPService(end, tracer)
 
@@ -104,9 +107,15 @@ func main() {
 	}
 
 	// start subscribing for notif events
-	go func(svc message.Service, ctx context.Context) {
-		svc.RecvEmailRequest(ctx)
-	}(svc, ctx)
+	go func(svc message.Service, ctx context.Context, conn *nats.Conn, wg *sync.WaitGroup) {
+		// for the subscriber
+		wg.Add(1)
+		svc.RecvEmailRequest(ctx, wg)
+
+		zapLogger.Info("subscriber returned")
+		// closing the connection because subscriber returned
+		conn.Close()
+	}(svc, ctx, natsConn, &wg)
 
 	// start listening and serving http server
 	go func() {
@@ -123,11 +132,11 @@ func main() {
 	zapLogger.Infof("Signal received to Shutdown server...")
 
 	ctxWithTimeOut, cancel := context.WithTimeout(ctx, config.ServerShutdownTimeOut)
-	defer cleanUp(cancel, zapLogger)
+	defer cancel()
 
 	// gracefully shutdown http server
 	if err := server.Shutdown(ctxWithTimeOut); err != nil {
-		cleanUp(cancel, zapLogger)
+		cancel()
 		zapLogger.Warnf("Server forced to shutdown: %s", err.Error())
 	}
 
@@ -135,14 +144,12 @@ func main() {
 	if err := provider.Shutdown(ctxWithTimeOut); err != nil {
 		zapLogger.Warn(err)
 	}
-}
 
-// cleanUp cleans or rather releases all resources
-func cleanUp(cancel context.CancelFunc, log *zap.SugaredLogger) {
-	var successBool bool
-	cancel()
+	// cancel the ctx to stop the pullSubscriber close the nats connection
+	cancelCtx()
 
-	if successBool {
-		log.Infof("Server exited successfully")
-	}
+	// wait till the nats connection is closed and pullSubscriber returned
+	wg.Wait()
+
+	zapLogger.Info("application exited")
 }
