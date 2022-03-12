@@ -108,8 +108,6 @@ func main() {
 
 	// start subscribing for notif events
 	go func(svc message.Service, ctx context.Context, conn *nats.Conn, wg *sync.WaitGroup) {
-		// for the subscriber
-		wg.Add(1)
 		svc.RecvEmailRequest(ctx, wg)
 
 		zapLogger.Info("subscriber returned")
