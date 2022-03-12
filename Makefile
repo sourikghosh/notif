@@ -17,8 +17,10 @@ trace:
   -p 9411:9411 \
   jaegertracing/all-in-one:1.29
 
+lint:
+	golangci-lint run ./...
 
 server:
 	go run cmd/main.go
 	
-.PHONY: js trace server
+.PHONY: js trace server lint

@@ -38,6 +38,7 @@ func NewLogger(cfg *config.NotifConfig) *zap.SugaredLogger {
 	newLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 
 	logSugar := newLogger.Sugar()
+	// nolint // ignoring err
 	logSugar.Sync()
 
 	return logSugar
