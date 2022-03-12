@@ -27,7 +27,7 @@ jobs:
       uses: golangci/golangci-lint-action@v3.1.0
     
     - name: Run Test
-      rub: go test -v ./...
+      run: go test -v ./...
 
     - name: Build binary
       run: go build -o notif cmd/main.go
