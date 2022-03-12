@@ -1,15 +1,35 @@
-name: notif-ci
+name: Notify
 
 on:
   push:
     branches: [ main ]
+    paths-ignore: [ README.md ]
   pull_request:
     branches: [ main ]
+    paths-ignore: [ README.md ]
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
 
 jobs:
+  golangci:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
+          version: v1.41
+  
   build-and-test:
     runs-on: ubuntu-latest
     steps:
+    - name: Check out code
     - uses: actions/checkout@v2
 
     - name: Set up Go
@@ -23,9 +43,6 @@ jobs:
     - name: Get Dependencies
       run: go mod download
 
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v3.1.0
-    
     - name: Run Test
       rub: go test -v ./...
 
