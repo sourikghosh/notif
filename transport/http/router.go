@@ -6,19 +6,21 @@ import (
 	"notif/pkg"
 	"notif/transport/endpoints"
 
+	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 )
 
 // NewHTTPService takes all the endpoints and returns handler.
-func NewHTTPService(endpoints endpoints.Endpoints, t trace.Tracer) http.Handler {
+func NewHTTPService(endpoints endpoints.Endpoints, log *zap.SugaredLogger, t trace.Tracer) http.Handler {
 
 	r := gin.New()
 
 	r.HandleMethodNotAllowed = true
-	r.Use(gin.Recovery())
-	r.Use(gin.Logger())
+	r.Use(ginzap.Ginzap(log.Desugar(), "2006/01/02 - 15:04:05", true))
+	r.Use(ginzap.RecoveryWithZap(log.Desugar(), true))
 
 	notif := r.Group("/notif-svc/v1")
 	{

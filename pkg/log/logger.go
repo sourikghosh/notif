@@ -1,8 +1,10 @@
 package log
 
 import (
-	"notif/pkg/config"
 	"os"
+	"time"
+
+	"notif/pkg/config"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -26,6 +28,7 @@ func NewLogger(cfg *config.NotifConfig) *zap.SugaredLogger {
 	encoderCfg.TimeKey = "TIME"
 	encoderCfg.NameKey = "NAME"
 	encoderCfg.MessageKey = "MESSAGE"
+	encoderCfg.EncodeTime = syslogTimeEncoder
 
 	if cfg.Encoding == "" && cfg.Mode == config.Development {
 		encoder = zapcore.NewConsoleEncoder(encoderCfg)
@@ -33,7 +36,6 @@ func NewLogger(cfg *config.NotifConfig) *zap.SugaredLogger {
 		encoder = zapcore.NewJSONEncoder(encoderCfg)
 	}
 
-	encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
 	core := zapcore.NewCore(encoder, logWriter, zap.NewAtomicLevelAt(logLevel))
 	newLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 
@@ -63,4 +65,8 @@ func zaplogLevel(cfg *config.NotifConfig) (logLevel zapcore.Level) {
 	}
 
 	return logLevel
+}
+
+func syslogTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(t.Format("2006/01/02 - 15:04:05"))
 }

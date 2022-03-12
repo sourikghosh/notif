@@ -2,6 +2,9 @@ package email
 
 import "errors"
 
+var ErrEmptyToList = errors.New("toList cannot be empty")
+var ErrEmptyAddr = errors.New("toList email addr cannot be empty")
+
 type NameAddr struct {
 	EmailAddr string `json:"emailAddr"`
 	UserName  string `json:"userName"`
@@ -16,12 +19,12 @@ type Entity struct {
 
 func (e *Entity) ToListValidation() error {
 	if len(e.ToList) < 1 {
-		return errors.New("toList cannot be empty")
+		return ErrEmptyToList
 	}
 
 	for i := range e.ToList {
 		if e.ToList[i].EmailAddr == "" {
-			return errors.New("toList email addr cannot be empty")
+			return ErrEmptyAddr
 		}
 	}
 

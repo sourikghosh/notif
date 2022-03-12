@@ -120,16 +120,16 @@ func (s *messageSvc) RecvEmailRequest(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 		// range over the batch of msgs and sends them using go-smtp
-		s.processMsg(ctx, msgs)
+		s.eventProcessor(ctx, msgs)
 	}
 }
 
-func (s *messageSvc) processMsg(ctx context.Context, msgs []*nats.Msg) {
+func (s *messageSvc) eventProcessor(ctx context.Context, msgs []*nats.Msg) {
 	for i := range msgs {
 		// Extracts the trace from msg header and creates a span for processing.
 		var span trace.Span
 		spanCtx := s.propagators.Extract(ctx, propagation.HeaderCarrier(msgs[i].Header))
-		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-subscribe.processMsg")
+		spanCtx, span = s.tracer.Start(spanCtx, "message.svc-subscribe.eventProcessor")
 
 		// extracting traceID for logging purpose
 		traceID := span.SpanContext().TraceID().String()

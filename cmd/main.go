@@ -91,7 +91,7 @@ func main() {
 	emailSvc := email.NewEmailService(zapLogger, cfg, tracer)
 	svc := message.NewMessageService(zapLogger, js, emailSvc, tracer, propagator)
 	end := endpoints.MakeEndpoints(svc, tracer)
-	h := httpTransport.NewHTTPService(end, tracer)
+	h := httpTransport.NewHTTPService(end, zapLogger, tracer)
 
 	// creating server with timeout and assigning the routes
 	server := &http.Server{
