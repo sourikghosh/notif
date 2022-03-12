@@ -57,7 +57,7 @@ func LoadConfig(path string) (*NotifConfig, error) {
 		return nil, errors.New("smtp config are not setup")
 	}
 
-	if cfg.Mode == gin.ReleaseMode {
+	if cfg.Mode == Production {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
