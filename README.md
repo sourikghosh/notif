@@ -1,3 +1,5 @@
+[![CodeQL](https://github.com/sourikghosh/notif/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/sourikghosh/notif/actions/workflows/codeql-analysis.yml)
+
 <img align="right" width="200px" src="https://github.com/sourikghosh/notif/blob/main/notif.png">
 
 # NOTIF
