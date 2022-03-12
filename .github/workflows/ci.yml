@@ -1,4 +1,4 @@
-name: "Notify-CI"
+name: notif-ci
 
 on:
   push:
