@@ -3,6 +3,7 @@ package message
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"net/http"
@@ -84,6 +85,8 @@ func (s *messageSvc) SendEmailRequest(ctx context.Context, e email.Entity) (*nat
 }
 
 func (s *messageSvc) RecvEmailRequest(ctx context.Context, wg *sync.WaitGroup) {
+	// for the subscriber
+	wg.Add(1)
 	// preparing args for new consumer
 	subj := fmt.Sprintf("%s.send", config.StreamName)
 	durableName := fmt.Sprintf("%s_pullSub", config.StreamName)
@@ -111,8 +114,9 @@ func (s *messageSvc) RecvEmailRequest(ctx context.Context, wg *sync.WaitGroup) {
 
 		// fecthing msgs in batch till context deadline or timeout
 		msgs, err := sub.Fetch(config.NatsBatchSize, nats.MaxWait(config.NatsSubMaxWait))
-		if err != nil && err != nats.ErrTimeout {
+		if err != nil && !errors.Is(err, nats.ErrTimeout) {
 			s.log.Errorf("failed to fetch msg in batch:%v", err)
+			continue
 		}
 
 		// range over the batch of msgs and sends them using go-smtp
@@ -120,7 +124,7 @@ func (s *messageSvc) RecvEmailRequest(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-func (s *messageSvc) processMsg(ctx context.Context, msgs []*nats.Msg) error {
+func (s *messageSvc) processMsg(ctx context.Context, msgs []*nats.Msg) {
 	for i := range msgs {
 		// Extracts the trace from msg header and creates a span for processing.
 		var span trace.Span
@@ -132,14 +136,14 @@ func (s *messageSvc) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 
 		if err := msgs[i].Ack(); err != nil {
 			s.errLogWithSpanAttributes("ack failed", traceID, err, span)
-			return err
+			continue
 		}
 
 		var e email.Entity
 		err := json.Unmarshal(msgs[i].Data, &e)
 		if err != nil {
 			s.errLogWithSpanAttributes("unmarshalling msgData failed", traceID, err, span)
-			return err
+			continue
 		}
 
 		// Send email service retry logic with maxAttempt and delay between each attempt
@@ -152,14 +156,12 @@ func (s *messageSvc) processMsg(ctx context.Context, msgs []*nats.Msg) error {
 
 		if err != nil {
 			s.errLogWithSpanAttributes("sending email failed", traceID, err, span)
-			return err
+			continue
 		}
 
 		s.log.Info("successfully send email", zap.String("traceID", traceID))
 		span.End()
 	}
-
-	return nil
 }
 
 func (s *messageSvc) errLogWithSpanAttributes(msg, traceID string, err error, span trace.Span) {
